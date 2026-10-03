@@ -9,8 +9,9 @@ use shell_surface::{
 };
 use tiny_skia::{Color, Paint, Pixmap, Rect, Transform};
 
-const PADDING: f32 = 16.0;
-const ICON_AREA: (f32, f32) = (104.0, 124.0);
+mod config;
+
+use config::{Config, Style};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Action {
@@ -53,6 +54,7 @@ impl Action {
 }
 
 struct PowerMenu {
+    config: Config,
     surface: SurfaceConfig,
     font_system: FontSystem,
     swash_cache: SwashCache,
@@ -62,8 +64,8 @@ struct PowerMenu {
 }
 
 impl PowerMenu {
-    fn new() -> Self {
-        let mut surface = SurfaceConfig::new("rupower", menu_size());
+    fn new(config: Config) -> Self {
+        let mut surface = SurfaceConfig::new("rupower", menu_size(&config.style));
         surface.layer = Layer::Overlay;
         surface.keyboard_interactivity = KeyboardInteractivity::Exclusive;
         surface.anchors = Anchors::empty();
@@ -71,6 +73,7 @@ impl PowerMenu {
         // usual floating/window rules. Wayland ignores this field.
         surface.override_redirect = false;
         Self {
+            config,
             surface,
             font_system: FontSystem::new(),
             swash_cache: SwashCache::new(),
@@ -82,7 +85,8 @@ impl PowerMenu {
 
     fn action_at(&self, x: f64, y: f64) -> Option<Action> {
         for (index, action) in Action::all().into_iter().enumerate() {
-            let (button_x, button_y, button_width, button_height) = button_layout(index);
+            let (button_x, button_y, button_width, button_height) =
+                button_layout(index, &self.config.style);
             if (button_x as f64..=(button_x + button_width) as f64).contains(&x)
                 && (button_y as f64..=(button_y + button_height) as f64).contains(&y)
             {
@@ -138,10 +142,10 @@ impl Shell for PowerMenu {
         paint.set_color(Color::from_rgba8(36, 40, 59, 255));
         pixmap.fill_rect(
             Rect::from_xywh(
-                PADDING,
-                PADDING,
-                surface_width - PADDING * 2.0,
-                surface_height - PADDING * 2.0,
+                self.config.style.padding,
+                self.config.style.padding,
+                surface_width - self.config.style.padding * 2.0,
+                surface_height - self.config.style.padding * 2.0,
             )
             .unwrap(),
             &paint,
@@ -149,7 +153,8 @@ impl Shell for PowerMenu {
             None,
         );
         for (index, action) in Action::all().into_iter().enumerate() {
-            let (button_x, button_y, button_width, button_height) = button_layout(index);
+            let (button_x, button_y, button_width, button_height) =
+                button_layout(index, &self.config.style);
             draw_button(
                 &mut pixmap,
                 button_x,
@@ -196,10 +201,10 @@ impl Shell for PowerMenu {
             paint.set_color(Color::from_rgba8(247, 118, 142, 220));
             pixmap.fill_rect(
                 Rect::from_xywh(
-                    PADDING * 2.0,
-                    PADDING * 2.0,
-                    surface_width - PADDING * 4.0,
-                    PADDING / 2.0,
+                    self.config.style.padding * 2.0,
+                    self.config.style.padding * 2.0,
+                    surface_width - self.config.style.padding * 4.0,
+                    self.config.style.padding / 2.0,
                 )
                 .unwrap(),
                 &paint,
@@ -320,18 +325,18 @@ fn draw_text(
     );
 }
 
-fn menu_size() -> Size {
+fn menu_size(config: &Style) -> Size {
     let action_count = Action::all().len() as f32;
-    let menu_width = action_count * ICON_AREA.0 + (action_count + 3.0) * PADDING;
-    let menu_height = ICON_AREA.1 + PADDING * 4.0;
+    let menu_width = action_count * config.button_width + (action_count + 3.0) * config.padding;
+    let menu_height = config.button_height + config.padding * 4.0;
     Size::new(menu_width as u32, menu_height as u32)
 }
 
-fn button_layout(index: usize) -> (f32, f32, f32, f32) {
-    let button_width = ICON_AREA.0;
-    let button_height = ICON_AREA.1;
-    let x = PADDING * 2.0 + index as f32 * (button_width + PADDING);
-    let y = PADDING * 2.0;
+fn button_layout(index: usize, config: &Style) -> (f32, f32, f32, f32) {
+    let button_width = config.button_width;
+    let button_height = config.button_height;
+    let x = config.padding * 2.0 + index as f32 * (button_width + config.padding);
+    let y = config.padding * 2.0;
     (x, y, button_width, button_height)
 }
 
@@ -360,7 +365,7 @@ fn draw_button(
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let mut app = PowerMenu::new();
+    let mut app = PowerMenu::new(Config::load()?);
     if std::env::var_os("WAYLAND_DISPLAY").is_some() {
         shell_surface::backend::wayland::WaylandBackend.run(&mut app)?;
     } else if std::env::var_os("DISPLAY").is_some() {
