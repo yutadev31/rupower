@@ -110,8 +110,8 @@ impl PowerMenu {
 
     fn run_action(&mut self, action: Action) {
         let command = match action {
-            Action::Poweroff => ("systemctl", vec!["poweroff"]),
-            Action::Reboot => ("systemctl", vec!["reboot"]),
+            Action::Poweroff => ("poweroff", vec![]),
+            Action::Reboot => ("reboot", vec![]),
             Action::Suspend => ("systemctl", vec!["suspend"]),
             Action::Lock => ("loginctl", vec!["lock-session"]),
             Action::Logout => {
