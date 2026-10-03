@@ -91,3 +91,50 @@ impl Style {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn defaults_enable_the_expected_actions() {
+        let config = Config::default();
+
+        assert!(config.actions.poweroff);
+        assert!(config.actions.reboot);
+        assert!(!config.actions.suspend);
+        assert!(config.actions.logout);
+        assert!(config.actions.lock);
+    }
+
+    #[test]
+    fn style_rejects_non_finite_or_non_positive_dimensions() {
+        let path = Path::new("config.toml");
+
+        for style in [
+            Style {
+                padding: -1.0,
+                ..Style::default()
+            },
+            Style {
+                button_width: 0.0,
+                ..Style::default()
+            },
+            Style {
+                button_height: f32::NAN,
+                ..Style::default()
+            },
+        ] {
+            assert!(style.validate(path).is_err());
+        }
+    }
+
+    #[test]
+    fn toml_keeps_defaults_for_omitted_values() {
+        let config: Config = toml::from_str("[actions]\nsuspend = true\n").unwrap();
+
+        assert_eq!(config.style.button_width, DEFAULT_BUTTON_WIDTH);
+        assert!(config.actions.suspend);
+        assert!(config.actions.poweroff);
+    }
+}

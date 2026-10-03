@@ -23,15 +23,62 @@ enum Action {
 }
 
 impl Action {
-    fn all() -> [Self; 5] {
-        [
-            Self::Poweroff,
-            Self::Reboot,
-            Self::Suspend,
-            Self::Logout,
-            Self::Lock,
-        ]
+    const ALL: [Self; 5] = [
+        Self::Poweroff,
+        Self::Reboot,
+        Self::Suspend,
+        Self::Logout,
+        Self::Lock,
+    ];
+
+    fn all() -> impl Iterator<Item = Self> {
+        Self::ALL.into_iter()
     }
+
+    fn command(self) -> CommandSpec {
+        match self {
+            Self::Poweroff => CommandSpec::new("poweroff", &[]),
+            Self::Reboot => CommandSpec::new("reboot", &[]),
+            Self::Suspend => CommandSpec::new("systemctl", &["suspend"]),
+            Self::Lock => CommandSpec::new("loginctl", &["lock-session"]),
+            Self::Logout if std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_some() => {
+                CommandSpec::new("hyprctl", &["dispatch", "hl.dsp.exit()"])
+            }
+            Self::Logout if std::env::var_os("SWAYSOCK").is_some() => {
+                CommandSpec::new("swaymsg", &["exit"])
+            }
+            Self::Logout => CommandSpec::new("i3-msg", &["exit"]),
+        }
+    }
+
+    fn keycode(self) -> u32 {
+        match self {
+            Self::Poweroff => 25,
+            Self::Reboot => 19,
+            Self::Suspend => 31,
+            Self::Logout => 38,
+            Self::Lock => 37,
+        }
+    }
+
+    fn from_keycode(keycode: u32) -> Option<Self> {
+        Self::all().find(|action| action.keycode() == keycode)
+    }
+
+    fn is_enabled(self, config: &Config) -> bool {
+        match self {
+            Self::Poweroff => config.actions.poweroff,
+            Self::Reboot => config.actions.reboot,
+            Self::Suspend => config.actions.suspend,
+            Self::Logout => config.actions.logout,
+            Self::Lock => config.actions.lock,
+        }
+    }
+
+    fn enabled(config: &Config) -> impl Iterator<Item = Self> {
+        Self::all().filter(move |action| action.is_enabled(config))
+    }
+
     fn color(self) -> (u8, u8, u8) {
         match self {
             Self::Poweroff => (247, 118, 142),
@@ -53,15 +100,14 @@ impl Action {
     }
 }
 
-impl Config {
-    fn is_action_enabled(&self, action: Action) -> bool {
-        match action {
-            Action::Poweroff => self.actions.poweroff,
-            Action::Reboot => self.actions.reboot,
-            Action::Suspend => self.actions.suspend,
-            Action::Logout => self.actions.logout,
-            Action::Lock => self.actions.lock,
-        }
+struct CommandSpec {
+    program: &'static str,
+    args: &'static [&'static str],
+}
+
+impl CommandSpec {
+    const fn new(program: &'static str, args: &'static [&'static str]) -> Self {
+        Self { program, args }
     }
 }
 
@@ -96,12 +142,8 @@ impl PowerMenu {
     }
 
     fn action_at(&self, x: f64, y: f64) -> Option<Action> {
-        for (index, action) in enabled_actions(&self.config).into_iter().enumerate() {
-            let (button_x, button_y, button_width, button_height) =
-                button_layout(index, &self.config.style);
-            if (button_x as f64..=(button_x + button_width) as f64).contains(&x)
-                && (button_y as f64..=(button_y + button_height) as f64).contains(&y)
-            {
+        for (index, action) in Action::enabled(&self.config).enumerate() {
+            if button_layout(index, &self.config.style).contains(x, y) {
                 return Some(action);
             }
         }
@@ -109,26 +151,10 @@ impl PowerMenu {
     }
 
     fn run_action(&mut self, action: Action) {
-        let command = match action {
-            Action::Poweroff => ("poweroff", vec![]),
-            Action::Reboot => ("reboot", vec![]),
-            Action::Suspend => ("systemctl", vec!["suspend"]),
-            Action::Lock => ("loginctl", vec!["lock-session"]),
-            Action::Logout => {
-                if std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_some() {
-                    // Hyprland's Lua config treats `dispatch` arguments as a
-                    // Lua expression. The legacy `dispatch exit` form makes
-                    // `exit` a bare identifier and is rejected as nil.
-                    ("hyprctl", vec!["dispatch", "hl.dsp.exit()"])
-                } else if std::env::var_os("SWAYSOCK").is_some() {
-                    ("swaymsg", vec!["exit"])
-                } else {
-                    ("i3-msg", vec!["exit"])
-                }
-            }
-        };
-        if let Err(error) = Command::new(command.0).args(command.1).spawn() {
-            eprintln!("rupower: failed to start {}: {error}", command.0);
+        let command = action.command();
+        if let Err(error) = Command::new(command.program).args(command.args).spawn() {
+            eprintln!("rupower: failed to start {}: {error}", command.program);
+            return;
         }
         std::process::exit(0);
     }
@@ -164,20 +190,15 @@ impl Shell for PowerMenu {
             Transform::identity(),
             None,
         );
-        for (index, action) in enabled_actions(&self.config).into_iter().enumerate() {
-            let (button_x, button_y, button_width, button_height) =
-                button_layout(index, &self.config.style);
+        for (index, action) in Action::enabled(&self.config).enumerate() {
+            let layout = button_layout(index, &self.config.style);
             draw_button(
                 &mut pixmap,
-                button_x,
-                button_y,
-                button_width,
-                button_height,
-                action,
+                layout,
                 self.hovered == Some(action) || self.confirm == Some(action),
             );
             let (icon, label, shortcut) = action.text();
-            let center_x = button_x + button_width / 2.0;
+            let center_x = layout.x + layout.width / 2.0;
             draw_text(
                 &mut self.font_system,
                 &mut self.swash_cache,
@@ -185,7 +206,7 @@ impl Shell for PowerMenu {
                 TextSpec {
                     text: icon,
                     x: center_x - 17.0,
-                    y: button_y + button_height * 0.08,
+                    y: layout.y + layout.height * 0.08,
                     size: 34.0,
                     rgb: action.color(),
                 },
@@ -197,7 +218,7 @@ impl Shell for PowerMenu {
                 TextSpec {
                     text: label,
                     x: center_x - label.len() as f32 * 3.5,
-                    y: button_y + button_height * 0.62,
+                    y: layout.y + layout.height * 0.62,
                     size: 13.0,
                     rgb: (169, 177, 214),
                 },
@@ -209,7 +230,7 @@ impl Shell for PowerMenu {
                 TextSpec {
                     text: shortcut,
                     x: center_x - shortcut.len() as f32 * 2.7,
-                    y: button_y + button_height * 0.82,
+                    y: layout.y + layout.height * 0.82,
                     size: 11.0,
                     rgb: (86, 95, 135),
                 },
@@ -229,6 +250,18 @@ impl Shell for PowerMenu {
                 Transform::identity(),
                 None,
             );
+            draw_text(
+                &mut self.font_system,
+                &mut self.swash_cache,
+                &mut pixmap,
+                TextSpec {
+                    text: "Press again to confirm",
+                    x: surface_width / 2.0 - 62.0,
+                    y: surface_height - self.config.style.padding * 1.35,
+                    size: 11.0,
+                    rgb: (255, 255, 255),
+                },
+            );
         }
         // shell-surface expects native little-endian ARGB8888 (BGRA bytes).
         let mut pixels = pixmap.data().to_vec();
@@ -241,7 +274,7 @@ impl Shell for PowerMenu {
 
     fn handle_event(&mut self, _surface: SurfaceId, event: InputEvent) {
         match event {
-            InputEvent::CloseRequested => {}
+            InputEvent::CloseRequested => std::process::exit(0),
             InputEvent::PointerMotion { position, .. }
             | InputEvent::PointerEnter { position, .. } => {
                 self.hovered = self.action_at(position.x, position.y)
@@ -267,14 +300,7 @@ impl Shell for PowerMenu {
                 match keycode {
                     42 | 54 => self.shift = pressed,
                     _ if pressed && self.shift => {
-                        let action = match keycode {
-                            25 => Some(Action::Poweroff), // P
-                            19 => Some(Action::Reboot),   // R
-                            31 => Some(Action::Suspend),  // S
-                            38 => Some(Action::Logout),   // L
-                            37 => Some(Action::Lock),     // K
-                            _ => None,
-                        };
+                        let action = Action::from_keycode(keycode);
                         if let Some(action) = action {
                             if self.confirm == Some(action) {
                                 self.run_action(action);
@@ -303,6 +329,21 @@ struct TextSpec<'a> {
     y: f32,
     size: f32,
     rgb: (u8, u8, u8),
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ButtonLayout {
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+}
+
+impl ButtonLayout {
+    fn contains(self, x: f64, y: f64) -> bool {
+        (self.x as f64..=(self.x + self.width) as f64).contains(&x)
+            && (self.y as f64..=(self.y + self.height) as f64).contains(&y)
+    }
 }
 
 fn draw_text(
@@ -348,37 +389,27 @@ fn draw_text(
 }
 
 fn menu_size(config: &Config) -> Size {
-    let action_count = enabled_actions(config).len() as f32;
+    let action_count = Action::enabled(config).count() as f32;
     let style = &config.style;
     let menu_width = action_count * style.button_width + (action_count + 3.0) * style.padding;
     let menu_height = style.button_height + style.padding * 4.0;
     Size::new(menu_width as u32, menu_height as u32)
 }
 
-fn enabled_actions(config: &Config) -> Vec<Action> {
-    Action::all()
-        .into_iter()
-        .filter(|action| config.is_action_enabled(*action))
-        .collect()
-}
-
-fn button_layout(index: usize, config: &Style) -> (f32, f32, f32, f32) {
+fn button_layout(index: usize, config: &Style) -> ButtonLayout {
     let button_width = config.button_width;
     let button_height = config.button_height;
     let x = config.padding * 2.0 + index as f32 * (button_width + config.padding);
     let y = config.padding * 2.0;
-    (x, y, button_width, button_height)
+    ButtonLayout {
+        x,
+        y,
+        width: button_width,
+        height: button_height,
+    }
 }
 
-fn draw_button(
-    pixmap: &mut Pixmap,
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32,
-    _action: Action,
-    active: bool,
-) {
+fn draw_button(pixmap: &mut Pixmap, layout: ButtonLayout, active: bool) {
     let mut paint = Paint::default();
     paint.set_color(Color::from_rgba8(
         if active { 59 } else { 41 },
@@ -387,7 +418,7 @@ fn draw_button(
         255,
     ));
     pixmap.fill_rect(
-        Rect::from_xywh(x, y, width, height).unwrap(),
+        Rect::from_xywh(layout.x, layout.y, layout.width, layout.height).unwrap(),
         &paint,
         Transform::identity(),
         None,

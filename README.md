@@ -64,6 +64,8 @@ Each action displays its shortcut in the menu:
 - `Shift+K`: Lock
 
 Selecting an action once highlights it; selecting it again runs the system command.
+The menu displays a confirmation hint after the first selection. Pressing `Enter`
+confirms the selected action, while `Escape`, `q`, or `x` closes the menu.
 
 ## License
 
