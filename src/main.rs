@@ -53,6 +53,18 @@ impl Action {
     }
 }
 
+impl Config {
+    fn is_action_enabled(&self, action: Action) -> bool {
+        match action {
+            Action::Poweroff => self.actions.poweroff,
+            Action::Reboot => self.actions.reboot,
+            Action::Suspend => self.actions.suspend,
+            Action::Logout => self.actions.logout,
+            Action::Lock => self.actions.lock,
+        }
+    }
+}
+
 struct PowerMenu {
     config: Config,
     surface: SurfaceConfig,
@@ -65,7 +77,7 @@ struct PowerMenu {
 
 impl PowerMenu {
     fn new(config: Config) -> Self {
-        let mut surface = SurfaceConfig::new("rupower", menu_size(&config.style));
+        let mut surface = SurfaceConfig::new("rupower", menu_size(&config));
         surface.layer = Layer::Overlay;
         surface.keyboard_interactivity = KeyboardInteractivity::Exclusive;
         surface.anchors = Anchors::empty();
@@ -84,7 +96,7 @@ impl PowerMenu {
     }
 
     fn action_at(&self, x: f64, y: f64) -> Option<Action> {
-        for (index, action) in Action::all().into_iter().enumerate() {
+        for (index, action) in enabled_actions(&self.config).into_iter().enumerate() {
             let (button_x, button_y, button_width, button_height) =
                 button_layout(index, &self.config.style);
             if (button_x as f64..=(button_x + button_width) as f64).contains(&x)
@@ -152,7 +164,7 @@ impl Shell for PowerMenu {
             Transform::identity(),
             None,
         );
-        for (index, action) in Action::all().into_iter().enumerate() {
+        for (index, action) in enabled_actions(&self.config).into_iter().enumerate() {
             let (button_x, button_y, button_width, button_height) =
                 button_layout(index, &self.config.style);
             draw_button(
@@ -325,11 +337,19 @@ fn draw_text(
     );
 }
 
-fn menu_size(config: &Style) -> Size {
-    let action_count = Action::all().len() as f32;
-    let menu_width = action_count * config.button_width + (action_count + 3.0) * config.padding;
-    let menu_height = config.button_height + config.padding * 4.0;
+fn menu_size(config: &Config) -> Size {
+    let action_count = enabled_actions(config).len() as f32;
+    let style = &config.style;
+    let menu_width = action_count * style.button_width + (action_count + 3.0) * style.padding;
+    let menu_height = style.button_height + style.padding * 4.0;
     Size::new(menu_width as u32, menu_height as u32)
+}
+
+fn enabled_actions(config: &Config) -> Vec<Action> {
+    Action::all()
+        .into_iter()
+        .filter(|action| config.is_action_enabled(*action))
+        .collect()
 }
 
 fn button_layout(index: usize, config: &Style) -> (f32, f32, f32, f32) {

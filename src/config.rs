@@ -10,6 +10,7 @@ const DEFAULT_BUTTON_HEIGHT: f32 = 124.0;
 #[serde(default)]
 pub(crate) struct Config {
     pub(crate) style: Style,
+    pub(crate) actions: Actions,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -20,10 +21,21 @@ pub(crate) struct Style {
     pub(crate) button_height: f32,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub(crate) struct Actions {
+    pub(crate) poweroff: bool,
+    pub(crate) reboot: bool,
+    pub(crate) suspend: bool,
+    pub(crate) logout: bool,
+    pub(crate) lock: bool,
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
             style: Style::default(),
+            actions: Actions::default(),
         }
     }
 }
@@ -34,6 +46,18 @@ impl Default for Style {
             padding: DEFAULT_PADDING,
             button_width: DEFAULT_BUTTON_WIDTH,
             button_height: DEFAULT_BUTTON_HEIGHT,
+        }
+    }
+}
+
+impl Default for Actions {
+    fn default() -> Self {
+        Self {
+            poweroff: true,
+            reboot: true,
+            suspend: false,
+            logout: true,
+            lock: true,
         }
     }
 }
