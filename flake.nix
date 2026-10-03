@@ -41,6 +41,7 @@
 
         buildInputs = with pkgs; [
           wayland
+          libxcb
         ];
 
         rupower = pkgs.rustPlatform.buildRustPackage {
