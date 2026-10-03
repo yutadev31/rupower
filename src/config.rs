@@ -6,7 +6,7 @@ const DEFAULT_PADDING: f32 = 16.0;
 const DEFAULT_BUTTON_WIDTH: f32 = 104.0;
 const DEFAULT_BUTTON_HEIGHT: f32 = 124.0;
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default)]
 pub(crate) struct Config {
     pub(crate) style: Style,
@@ -29,15 +29,6 @@ pub(crate) struct Actions {
     pub(crate) suspend: bool,
     pub(crate) logout: bool,
     pub(crate) lock: bool,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            style: Style::default(),
-            actions: Actions::default(),
-        }
-    }
 }
 
 impl Default for Style {

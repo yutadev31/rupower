@@ -182,31 +182,37 @@ impl Shell for PowerMenu {
                 &mut self.font_system,
                 &mut self.swash_cache,
                 &mut pixmap,
-                icon,
-                center_x - 17.0,
-                button_y + button_height * 0.08,
-                34.0,
-                action.color(),
+                TextSpec {
+                    text: icon,
+                    x: center_x - 17.0,
+                    y: button_y + button_height * 0.08,
+                    size: 34.0,
+                    rgb: action.color(),
+                },
             );
             draw_text(
                 &mut self.font_system,
                 &mut self.swash_cache,
                 &mut pixmap,
-                label,
-                center_x - label.len() as f32 * 3.5,
-                button_y + button_height * 0.62,
-                13.0,
-                (169, 177, 214),
+                TextSpec {
+                    text: label,
+                    x: center_x - label.len() as f32 * 3.5,
+                    y: button_y + button_height * 0.62,
+                    size: 13.0,
+                    rgb: (169, 177, 214),
+                },
             );
             draw_text(
                 &mut self.font_system,
                 &mut self.swash_cache,
                 &mut pixmap,
-                shortcut,
-                center_x - shortcut.len() as f32 * 2.7,
-                button_y + button_height * 0.82,
-                11.0,
-                (86, 95, 135),
+                TextSpec {
+                    text: shortcut,
+                    x: center_x - shortcut.len() as f32 * 2.7,
+                    y: button_y + button_height * 0.82,
+                    size: 11.0,
+                    rgb: (86, 95, 135),
+                },
             );
         }
         if self.confirm.is_some() {
@@ -226,7 +232,7 @@ impl Shell for PowerMenu {
         }
         // shell-surface expects native little-endian ARGB8888 (BGRA bytes).
         let mut pixels = pixmap.data().to_vec();
-        for pixel in pixels.chunks_exact_mut(4) {
+        for pixel in pixels.as_chunks_mut::<4>().0 {
             pixel.swap(0, 2);
         }
         pixels.resize(size.width as usize * size.height as usize * 4, 0);
@@ -291,33 +297,37 @@ impl Shell for PowerMenu {
     }
 }
 
-fn draw_text(
-    font_system: &mut FontSystem,
-    swash_cache: &mut SwashCache,
-    pixmap: &mut Pixmap,
-    text: &str,
+struct TextSpec<'a> {
+    text: &'a str,
     x: f32,
     y: f32,
     size: f32,
     rgb: (u8, u8, u8),
+}
+
+fn draw_text(
+    font_system: &mut FontSystem,
+    swash_cache: &mut SwashCache,
+    pixmap: &mut Pixmap,
+    spec: TextSpec<'_>,
 ) {
-    let mut buffer = Buffer::new(font_system, Metrics::new(size, size * 1.2));
+    let mut buffer = Buffer::new(font_system, Metrics::new(spec.size, spec.size * 1.2));
     let mut buffer = buffer.borrow_with(font_system);
-    buffer.set_size(Some(180.0), Some(size * 1.5));
+    buffer.set_size(Some(180.0), Some(spec.size * 1.5));
     let attrs = Attrs::new().family(Family::Name("Hack Nerd Font"));
-    buffer.set_text(text, &attrs, Shaping::Advanced);
+    buffer.set_text(spec.text, &attrs, Shaping::Advanced);
     buffer.shape_until_scroll(true);
     let width = pixmap.width();
     let height = pixmap.height();
     buffer.draw(
         swash_cache,
-        TextColor::rgb(rgb.0, rgb.1, rgb.2),
+        TextColor::rgb(spec.rgb.0, spec.rgb.1, spec.rgb.2),
         |px, py, w, h, color| {
             let data = pixmap.data_mut();
             for dy in 0..h {
                 for dx in 0..w {
-                    let xx = x as i32 + px + dx as i32;
-                    let yy = y as i32 + py + dy as i32;
+                    let xx = spec.x as i32 + px + dx as i32;
+                    let yy = spec.y as i32 + py + dy as i32;
                     if xx < 0 || yy < 0 || xx >= width as i32 || yy >= height as i32 {
                         continue;
                     }
