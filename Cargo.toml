@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-cosmic-text = "0.14"
-dirs = "6"
+cosmic-text = "0.19"
+dirs = "7"
 serde = { version = "1", features = ["derive"] }
-toml = "0.8"
-tiny-skia = "0.11"
+toml = "1.1"
+tiny-skia = "0.12"
 shell-surface = { git = "https://github.com/yutadev31/shell-surface.git", rev = "64394ca9d1b1506de96bb595fbbfb93462ccc290" }
